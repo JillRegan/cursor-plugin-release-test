@@ -284,3 +284,4 @@ Cursor picks up new commits on `main` automatically and reviews each update befo
 ## License
 
 [MIT](./LICENSE) — Copyright (c) 2026 1Password
+Release tooling test.
