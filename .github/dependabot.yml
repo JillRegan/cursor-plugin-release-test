@@ -6,3 +6,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # Gives Dependabot PRs a Conventional Commits title ("deps: bump ...")
+    # so they pass the PR title check and stay out of the changelog.
+    commit-message:
+      prefix: deps
