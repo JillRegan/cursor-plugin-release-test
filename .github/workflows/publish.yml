@@ -1,0 +1,82 @@
+name: Publish (test)
+
+# TEST ONLY: nothing is actually published. This checks the publishing flow
+# proposed in the RFD:
+#   1. Started by release-please.yml with workflow_dispatch on the new tag
+#   2. Waits for approval in the "release" Environment
+#   3. Fails if the approver is the person who merged the release PR
+#   4. Makes the draft GitHub Release public (immutable releases then lock it)
+
+on:
+  workflow_dispatch:
+    inputs:
+      merged_by:
+        description: GitHub login of the person who merged the release PR
+        required: false
+        type: string
+  # Manual fallback: a person pushing a v* tag. In repos that block tag
+  # creation, use workflow_dispatch instead.
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  publish:
+    # Only run on release tags, never on a branch.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write # make the draft release public
+      actions: read # read who approved this run
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      - name: Check the approver didn't merge the release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+          # Set by release-please.yml. For a manual tag push it's empty, and
+          # the person who pushed the tag is used instead.
+          MERGED_BY: ${{ inputs.merged_by || github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          approvers=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/approvals" \
+            --jq '[.[] | select(.state == "approved") | .user.login] | unique | .[]')
+
+          if [ -z "$approvers" ]; then
+            echo "::error::No approval found for this run. Check the release Environment has required reviewers."
+            exit 1
+          fi
+
+          echo "Release PR merged by: $MERGED_BY"
+          echo "Approved by: $(echo "$approvers" | tr '\n' ' ')"
+
+          # The approvals list covers every attempt of this run, so an earlier
+          # self-approval stays in it after a re-run. Pass as long as at least
+          # one approval came from someone other than the person who merged.
+          if ! echo "$approvers" | grep -vqxF "$MERGED_BY"; then
+            echo "::error::Only $MERGED_BY approved, and they merged the release PR. Ask someone else on the team to approve a re-run."
+            exit 1
+          fi
+
+      - name: Publish (test only)
+        run: echo "Would publish $GITHUB_REF_NAME here."
+
+      - name: Make the GitHub Release public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || echo "missing")
+          case "$is_draft" in
+            true)    gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+                     echo "Release $GITHUB_REF_NAME is now public." ;;
+            false)   echo "Release $GITHUB_REF_NAME is already public." ;;
+            missing) echo "::warning::No GitHub Release found for $GITHUB_REF_NAME." ;;
+          esac

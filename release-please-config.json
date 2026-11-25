@@ -6,6 +6,8 @@
     ".": {
       "release-type": "simple",
       "package-name": "cursor-plugin",
+      "draft": true,
+      "force-tag-creation": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
