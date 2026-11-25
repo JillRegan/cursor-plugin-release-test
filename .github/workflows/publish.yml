@@ -57,8 +57,11 @@ jobs:
           echo "Release PR merged by: $MERGED_BY"
           echo "Approved by: $(echo "$approvers" | tr '\n' ' ')"
 
-          if echo "$approvers" | grep -qxF "$MERGED_BY"; then
-            echo "::error::$MERGED_BY merged the release PR and can't also approve publishing. Ask someone else on the team to approve a re-run."
+          # The approvals list covers every attempt of this run, so an earlier
+          # self-approval stays in it after a re-run. Pass as long as at least
+          # one approval came from someone other than the person who merged.
+          if ! echo "$approvers" | grep -vqxF "$MERGED_BY"; then
+            echo "::error::Only $MERGED_BY approved, and they merged the release PR. Ask someone else on the team to approve a re-run."
             exit 1
           fi
 
